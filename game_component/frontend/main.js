@@ -42,7 +42,7 @@ const KEY_TO_DIR = {
 const $ = (id) => document.getElementById(id);
 const els = {
   game: $("game"), status: $("status"), banner: $("banner"),
-  exchangeNo: $("exchange-no"), windowLabel: $("window-label"),
+  exchangeNo: $("exchange-no"), windowLabel: $("window-label"), turnInd: $("turn-indicator"),
   heartsOpp: $("hearts-opp"), heartsPlayer: $("hearts-player"), whoPlayer: $("who-player"),
   layerOpp: $("layer-opp"), oppLabel: $("opp-label"),
   layerHand: $("layer-hand"), handLabel: $("hand-label"),
@@ -110,6 +110,9 @@ function renderHUD() {
   els.exchangeNo.textContent = `교환 ${S.exchangeNo}`;
   const w = S.attacker === "opp" ? S.window.player : S.window.opp; // 이번 방어자의 window
   els.windowLabel.textContent = `허용 ${Math.round(w)}ms`;
+  const myAtk = S.attacker === "player";
+  els.turnInd.textContent = myAtk ? "⚔️ 내 공격 턴" : "🛡️ 내 방어 턴";
+  els.turnInd.className = myAtk ? "atk" : "def";
 }
 
 const IMG = {
@@ -404,7 +407,8 @@ function initPvP(args) {
   const c = args.config || {};
   CFG = Object.assign({}, DEFAULT_CFG, c);
   if (!CFG.window) CFG.window = DEFAULT_CFG.window;
-  P = { myId: c.playerId || "p" + Math.random().toString(36).slice(2),
+  // 매칭/프레즌스용 '접속 고유 ID' — 같은 player_uuid(같은 기기 2탭)라도 충돌 안 나게
+  P = { myId: (c.playerId || "p") + "-" + Math.random().toString(36).slice(2, 7),
         nick: c.nickname || "익명", room: c.roomCode || null,
         url: c.supabaseUrl, key: c.anonKey, started: false };
   els.whoPlayer.textContent = "나 (" + P.nick + ")";
@@ -422,12 +426,13 @@ function findMatch() {
   mm.on("presence", { event: "sync" }, () => {
     if (P.started) return;
     const ids = Object.keys(mm.presenceState()).sort();
+    matchOverlay(true, "상대를 찾는 중…", `대기열 ${ids.length}명`);
     if (ids.length >= 2) {
       const pair = ids.slice(0, 2);
       if (pair.includes(P.myId)) {
+        // 조기 untrack 금지 — 양쪽 모두 짝을 보기 전에 빠지면 매칭 실패.
+        // mm 정리는 startNetMatch(듀얼 시작 확정 후)에서.
         P.started = true;
-        try { mm.untrack(); } catch (e) {}
-        sb.removeChannel(mm);
         joinDuel("m:" + pair.join("__"));
       }
     }
@@ -458,6 +463,7 @@ function joinDuel(roomId) {
 function send(payload) { if (P.ch) P.ch.send({ type: "broadcast", event: "sig", payload }); }
 
 function startNetMatch() {
+  if (P.mm) { try { P.mm.untrack(); sb.removeChannel(P.mm); } catch (e) {} P.mm = null; } // 이제 안전하게 대기열 정리
   matchOverlay(false);
   S = freshState();
   S.over = false;

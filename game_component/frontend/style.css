@@ -10,6 +10,9 @@ body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; color: #e8e6e3
 #hud .side.right { text-align: right; }
 #hud .hearts { font-size: 22px; letter-spacing: 2px; line-height: 1.2; }
 #hud .center-info { text-align: center; }
+#turn-indicator { font-size: 17px; font-weight: 900; line-height: 1.4; min-height: 24px; }
+#turn-indicator.atk { color: #ff6b5a; text-shadow: 0 0 8px rgba(192,57,43,.6); }
+#turn-indicator.def { color: #5ab0ff; text-shadow: 0 0 8px rgba(52,120,200,.6); }
 #exchange-no { font-size: 14px; font-weight: 700; }
 #window-label { font-size: 12px; color: #e2b04a; }
 
