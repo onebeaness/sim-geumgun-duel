@@ -1,0 +1,29 @@
+# --- Secrets (절대 커밋 금지) ---
+.streamlit/secrets.toml
+.env
+.env.*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Streamlit ---
+.streamlit/cache/
+
+# --- Node (커스텀 컴포넌트에 빌드 단계가 생길 경우) ---
+node_modules/
+dist/
+build/
+
+# --- OS / 에디터 ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

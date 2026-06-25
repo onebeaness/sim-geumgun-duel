@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="game" tabindex="0">
+
+    <!-- 상단 HUD -->
+    <div id="hud">
+      <div class="side">
+        <div class="who">상대 (봇)</div>
+        <div class="hearts" id="hearts-opp"></div>
+      </div>
+      <div class="center-info">
+        <div id="exchange-no">교환 1</div>
+        <div id="window-label">허용 800ms</div>
+      </div>
+      <div class="side right">
+        <div class="who" id="who-player">나</div>
+        <div class="hearts" id="hearts-player"></div>
+      </div>
+    </div>
+
+    <!-- 결투 씬 (3레이어) -->
+    <div id="scene">
+      <div id="layer-bg"></div>
+
+      <div id="layer-opp" class="sprite">
+        <div class="sprite-label" id="opp-label">대기</div>
+      </div>
+
+      <div id="lanes">
+        <div class="lane" data-dir="left">
+          <div class="arrow">◀</div><div class="lane-name">좌</div><div class="keyhint">← / A</div>
+        </div>
+        <div class="lane" data-dir="center">
+          <div class="arrow">▼</div><div class="lane-name">중</div><div class="keyhint">↓ / S</div>
+        </div>
+        <div class="lane" data-dir="right">
+          <div class="arrow">▶</div><div class="lane-name">우</div><div class="keyhint">→ / D</div>
+        </div>
+      </div>
+
+      <!-- 허용시간 바 -->
+      <div id="timer-track"><div id="timer-fill"></div></div>
+
+      <div id="layer-hand" class="sprite">
+        <div class="sprite-label" id="hand-label">대기</div>
+      </div>
+
+      <!-- 중앙 배너 (시작/너무 빨랐음/막음/실패/타임아웃 등) -->
+      <div id="banner" class="hidden"></div>
+    </div>
+
+    <!-- 상태 텍스트 -->
+    <div id="status">아레나를 클릭하고 ← ↓ → (또는 A S D) 로 플레이</div>
+
+    <!-- 결과 오버레이 -->
+    <div id="overlay" class="hidden">
+      <div id="overlay-title"></div>
+      <div id="overlay-sub"></div>
+      <button id="again-btn">다시 결투</button>
+    </div>
+
+  </div>
+  <script src="main.js"></script>
+</body>
+</html>
