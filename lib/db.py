@@ -37,6 +37,19 @@ def is_enabled() -> bool:
     return get_client() is not None
 
 
+def browser_credentials():
+    """브라우저 컴포넌트(Realtime)용 URL + anon(publishable) 키. 없으면 (None, None)."""
+    try:
+        s = st.secrets.get("supabase", {})
+    except Exception:
+        return None, None
+    url = s.get("url")
+    anon = s.get("anon_key") or s.get("publishable_key")
+    if not url or not anon or "YOUR_" in str(anon):
+        return None, None
+    return url, anon
+
+
 def upsert_player(player_id: str, nickname: str) -> None:
     c = get_client()
     if not c:

@@ -387,6 +387,205 @@ function showOverlay(kind, title, sub) {
   Streamlit.height();
 }
 
+// ====================== PvP (Supabase Realtime) ======================
+let MODE = "solo";
+let sb = null;
+let P = {};
+const $m = (id) => document.getElementById(id);
+function matchOverlay(show, status, sub) {
+  const o = $m("match-overlay");
+  if (show) { $m("match-status").textContent = status || ""; $m("match-sub").textContent = sub || ""; o.classList.remove("hidden"); }
+  else o.classList.add("hidden");
+  Streamlit.height();
+}
+
+function initPvP(args) {
+  MODE = "pvp";
+  const c = args.config || {};
+  CFG = Object.assign({}, DEFAULT_CFG, c);
+  if (!CFG.window) CFG.window = DEFAULT_CFG.window;
+  P = { myId: c.playerId || "p" + Math.random().toString(36).slice(2),
+        nick: c.nickname || "익명", room: c.roomCode || null,
+        url: c.supabaseUrl, key: c.anonKey, started: false };
+  els.whoPlayer.textContent = "나 (" + P.nick + ")";
+  setOpp("idle"); setHand("idle"); setLanes("");
+  if (!window.supabase || !P.url || !P.key) { matchOverlay(true, "온라인 설정 필요", "supabase 연결 정보가 없습니다"); return; }
+  sb = window.supabase.createClient(P.url, P.key, { realtime: { params: { eventsPerSecond: 20 } } });
+  if (P.room) joinDuel("room:" + P.room);
+  else findMatch();
+}
+
+function findMatch() {
+  matchOverlay(true, "상대를 찾는 중…", "대기열 입장 중");
+  const mm = sb.channel("mm", { config: { presence: { key: P.myId } } });
+  P.mm = mm;
+  mm.on("presence", { event: "sync" }, () => {
+    if (P.started) return;
+    const ids = Object.keys(mm.presenceState()).sort();
+    if (ids.length >= 2) {
+      const pair = ids.slice(0, 2);
+      if (pair.includes(P.myId)) {
+        P.started = true;
+        try { mm.untrack(); } catch (e) {}
+        sb.removeChannel(mm);
+        joinDuel("m:" + pair.join("__"));
+      }
+    }
+  });
+  mm.subscribe(async (st) => { if (st === "SUBSCRIBED") await mm.track({ nick: P.nick, t: Date.now() }); });
+}
+
+function joinDuel(roomId) {
+  matchOverlay(true, "상대와 연결 중…", P.room ? "방: " + P.room : "");
+  const ch = sb.channel("duel:" + roomId, { config: { presence: { key: P.myId }, broadcast: { self: false } } });
+  P.ch = ch;
+  ch.on("presence", { event: "sync" }, () => {
+    const ps = ch.presenceState();
+    const ids = Object.keys(ps);
+    if (ids.length >= 2 && !P.matchOn) {
+      P.matchOn = true;
+      const sorted = [...ids].sort();
+      P.p1 = sorted[0]; P.p2 = sorted[1];
+      P.oppId = sorted.find((x) => x !== P.myId);
+      P.oppNick = (ps[P.oppId] && ps[P.oppId][0] && ps[P.oppId][0].nick) || "상대";
+      startNetMatch();
+    }
+  });
+  ch.on("presence", { event: "leave" }, () => { if (P.matchOn && S && !S.over) netVoid("상대 이탈"); });
+  ch.on("broadcast", { event: "sig" }, ({ payload }) => onSig(payload));
+  ch.subscribe(async (st) => { if (st === "SUBSCRIBED") await ch.track({ nick: P.nick }); });
+}
+function send(payload) { if (P.ch) P.ch.send({ type: "broadcast", event: "sig", payload }); }
+
+function startNetMatch() {
+  matchOverlay(false);
+  S = freshState();
+  S.over = false;
+  S.pendingTimeout = { player: 0, opp: 0 };
+  document.querySelector("#hud .side .who").textContent = "상대 (" + P.oppNick + ")";
+  renderHUD();
+  banner("결투 시작", "warn");
+  timers.pace = setTimeout(() => { hideBanner(); netScheduleTurn(1); }, 800);
+}
+
+function attackerIdForTurn(t) { return (t % 2 === 1) ? P.p1 : P.p2; } // 홀수턴 p1 공격
+function netScheduleTurn(t) {
+  if (S.over) return;
+  S.exchangeNo = t;
+  S.attacker = (attackerIdForTurn(t) === P.myId) ? "player" : "opp";
+  S.defender = (S.attacker === "player") ? "opp" : "player";
+  S.curDir = null; S.cueReady = false;
+  setOpp("idle"); setHand("idle"); setLanes(""); hideBanner(); renderHUD();
+  if (S.attacker === "player") netPromptAttack(t);
+  else { S.phase = "awaitAtk"; setStatus("상대의 공격을 기다리는 중…"); }
+}
+function netPromptAttack(t) {
+  S.phase = "attackerCommit";
+  const sec = Math.round(CFG.commitTimeoutMs / 1000);
+  setStatus(`⚔ 공격 턴! 좌(←/A)·중(↑↓/W S)·우(→/D) 중 하나로 베세요. ${sec}초.`);
+  banner("공격하라!", "warn"); els.game.focus();
+  timers.commit = setTimeout(() => { send({ ev: "timeout", t }); netApplyTimeout(P.myId, t); }, CFG.commitTimeoutMs);
+}
+function netCommit(dir) {
+  clearTimeout(timers.commit);
+  S.curDir = dir; S.phase = "await";
+  setHand("attack-" + dir); hideBanner(); setStatus("상대가 막는 중…");
+  send({ ev: "attack", t: S.exchangeNo, dir });
+}
+function onSig(p) {
+  if (!S || S.over) return;
+  if (p.ev === "attack" && p.t === S.exchangeNo && S.defender === "player") netBeginDefense(p.dir);
+  else if (p.ev === "result" && p.t === S.exchangeNo && S.attacker === "player") netApplyResultFromOpp(p.t, p.hit, p.reaction);
+  else if (p.ev === "timeout" && p.t === S.exchangeNo) netApplyTimeout(attackerIdForTurn(p.t), p.t);
+}
+function netBeginDefense(dir) {
+  S.curDir = dir; S.phase = "precue";
+  setOpp("idle"); setHand("idle"); setLanes(""); setStatus("막아라!");
+  timers.precue = setTimeout(() => netShowCue(dir), randInt(CFG.precue.minMs, CFG.precue.maxMs));
+}
+function netShowCue(dir) {
+  S.phase = "cue"; S.cueReady = false;
+  setOpp("attack-" + dir); setLanes("cue", dir); banner("막아!", "bad");
+  const w = S.window.player;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    S.cueStartTs = performance.now(); S.cueReady = true;
+    startTimerBar(w);
+    timers.win = setTimeout(() => { if (S.phase === "cue") { stopTimerBar(); banner("너무 느림", "bad"); netResolveMyDefense(null, false, null); } }, w);
+  }));
+}
+function netTooEarly() {
+  clearTimeout(timers.win); stopTimerBar(); setLanes(""); setOpp("idle");
+  banner("너무 빨랐음 · 다시", "warn"); S.phase = "resolve";
+  timers.pace = setTimeout(() => { hideBanner(); netBeginDefense(S.curDir); }, 700);
+}
+function netDefenseKey(dir) {
+  if (!S.cueReady) return netTooEarly();
+  const reaction = performance.now() - S.cueStartTs;
+  if (reaction < CFG.minValidReactionMs) return netTooEarly();
+  clearTimeout(timers.win); stopTimerBar(); hideBanner();
+  S.reactions.player.push(reaction);
+  const hit = dir === S.curDir && reaction <= S.window.player;
+  setHand("block-" + dir);
+  setStatus(`${Math.round(reaction)}ms — ${hit ? "막음!" : (dir === S.curDir ? "느림" : "빗맞음")}`);
+  netResolveMyDefense(dir, hit, reaction);
+}
+function netResolveMyDefense(dir, hit, reaction) {
+  send({ ev: "result", t: S.exchangeNo, hit, reaction: reaction != null ? Math.round(reaction) : null });
+  pushTurn("player", hit, reaction);
+  netApplyOutcome(S.exchangeNo, hit, "player");
+}
+function netApplyResultFromOpp(t, hit, reaction) {
+  if (hit) banner("상대가 막음", "warn"); else { setOpp("hit"); banner("명중!", "good"); }
+  if (reaction != null) S.reactions.opp.push(reaction);
+  pushTurn("opp", hit, reaction);
+  netApplyOutcome(t, hit, "opp");
+}
+function netApplyOutcome(t, hit, defenderRole) {
+  if (!hit) netLoseLife(defenderRole, "defense");
+  renderHUD();
+  if (!S.over) timers.pace = setTimeout(() => netScheduleTurn(t + 1), 750);
+}
+function netApplyTimeout(attId, t) {
+  clearTimeout(timers.commit);
+  const role = (attId === P.myId) ? "player" : "opp";
+  S.pendingTimeout[role] = (S.pendingTimeout[role] || 0) + 1;
+  banner("시간 초과", "warn");
+  if (S.pendingTimeout[role] >= CFG.timeout.perLife) { S.pendingTimeout[role] = 0; netLoseLife(role, "timeout"); }
+  renderHUD();
+  if (!S.over) timers.pace = setTimeout(() => netScheduleTurn(t + 1), 800);
+}
+function netLoseLife(role, cause) {
+  S.lives[role] = Math.max(0, S.lives[role] - 1);
+  if (cause === "timeout") {
+    S.consecTimeoutLife[role] += 1;
+    if (S.consecTimeoutLife[role] >= CFG.timeout.disconnectConsecLives) return netVoid("연결 끊김");
+  } else S.consecTimeoutLife[role] = 0;
+  if (S.lives[role] <= 0) netEnd(role === "player" ? "opp" : "player");
+}
+function pushTurn(defRole, hit, reaction) {
+  S.turnLog.push({ turn_no: S.exchangeNo, attacker: S.attacker, defender: defRole, direction: S.curDir,
+    reaction_ms: reaction != null ? Math.round(reaction) : null, defended: hit,
+    window_ms: Math.round(S.window[defRole] || 0), cause: hit ? null : "defense" });
+  S.window[defRole] = nextWindow(S.reactions[defRole]);
+}
+function netEnd(winnerRole) {
+  S.over = true; clearTimers();
+  const win = winnerRole === "player";
+  setOpp(win ? "hit" : "win");
+  els.againBtn.style.display = "none";
+  showOverlay(win ? "win" : "lose", win ? "승리" : "패배", win ? `${P.oppNick} 격파!` : `${P.oppNick}에게 패배`);
+  Streamlit.value({ event: "matchEnd", ts: Date.now(), mode: "pvp", winner: winnerRole, voided: false, oppNick: P.oppNick, ...statsPayload() });
+  cleanupPvP();
+}
+function netVoid(reason) {
+  S.over = true; clearTimers();
+  els.againBtn.style.display = "none";
+  showOverlay("void", "기록 미반영", reason + " — 전적·레이팅에 반영되지 않습니다.");
+  Streamlit.value({ event: "matchVoid", ts: Date.now(), mode: "pvp", reason });
+  cleanupPvP();
+}
+function cleanupPvP() { try { if (P.ch) sb.removeChannel(P.ch); } catch (e) {} }
+
 // === 입력 라우팅 ===
 els.game.addEventListener("click", () => els.game.focus());
 els.game.addEventListener("keydown", (ev) => {
@@ -394,17 +593,24 @@ els.game.addEventListener("keydown", (ev) => {
   if (!dir) return;
   ev.preventDefault();
   if (S == null || S.over) return;
+  if (MODE === "pvp") {
+    if (S.phase === "attackerCommit") netCommit(dir);
+    else if (S.phase === "precue") netTooEarly();
+    else if (S.phase === "cue") netDefenseKey(dir);
+    return;
+  }
   if (S.phase === "attackerCommit") playerCommitted(dir);
   else if (S.phase === "precue") tooEarly();
   else if (S.phase === "cue") onPlayerDefenseKey(dir);
 });
-els.againBtn.addEventListener("click", () => startMatch());
+els.againBtn.addEventListener("click", () => { if (MODE !== "pvp") startMatch(); });
 
 // === 렌더 진입점 ===
 Streamlit.onRender((args) => {
   if (!started) {
     started = true;
     preloadImages();
+    if (args.mode === "pvp") { initPvP(args); return; }
     CFG = Object.assign({}, DEFAULT_CFG, args.config || {});
     if (!CFG.window) CFG.window = DEFAULT_CFG.window;
     const profiles = CFG.botProfiles || DEFAULT_CFG.botProfiles;

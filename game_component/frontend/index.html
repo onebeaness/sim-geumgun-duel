@@ -58,6 +58,13 @@
     <!-- 상태 텍스트 -->
     <div id="status">아레나를 클릭하고 ← ↓ → (또는 A S D) 로 플레이</div>
 
+    <!-- 매칭/연결 상태 오버레이 (PvP) -->
+    <div id="match-overlay" class="hidden">
+      <div class="spinner"></div>
+      <div id="match-status">상대를 찾는 중…</div>
+      <div id="match-sub"></div>
+    </div>
+
     <!-- 결과 오버레이 -->
     <div id="overlay" class="hidden">
       <div id="overlay-title"></div>
@@ -66,6 +73,7 @@
     </div>
 
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="main.js"></script>
 </body>
 </html>

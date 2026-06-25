@@ -109,5 +109,67 @@ if mode == "솔로 플레이":
         if st.button("결투 종료 (로비로)"):
             st.session_state.in_duel = False
             st.rerun()
-else:
-    st.info("온라인 매칭은 Phase 3 에서 구현됩니다.")
+else:  # 온라인 매칭
+    url, anon = db.browser_credentials()
+    if not url or not anon:
+        st.warning("온라인 매칭을 켜려면 secrets 에 `[supabase] anon_key`(publishable) 가 필요합니다.")
+        st.caption("Supabase → Project Settings → API → `anon`(또는 publishable) 키를 secrets 에 추가하세요.")
+    else:
+        sub = st.radio("매칭 방식", ["랜덤 매칭", "방 코드(친구)"], horizontal=True, key="pvp_sub")
+        room = ""
+        if sub == "방 코드(친구)":
+            room = st.text_input("방 코드 (친구와 같은 코드 입력)", max_chars=16, key="pvp_room_in").strip()
+
+        ready = bool(nickname) and len(nickname) >= config.NICK_MIN_LEN
+        can_start = ready and (sub == "랜덤 매칭" or bool(room))
+        if st.button("매칭 시작", type="primary", disabled=not can_start):
+            st.session_state.pvp_on = True
+            st.session_state.pvp_room = room
+
+        if st.session_state.get("pvp_on"):
+            st.caption(
+                "아레나를 **클릭**해 포커스 → 좌(←/A)·중(↑↓/W S)·우(→/D). "
+                "상대가 들어오면 자동 시작됩니다."
+            )
+            cfg = config.as_component_config()
+            cfg.update({
+                "supabaseUrl": url,
+                "anonKey": anon,
+                "playerId": st.session_state.player_uuid,
+                "nickname": st.session_state.get("nickname", "익명"),
+                "roomCode": st.session_state.get("pvp_room") or None,
+            })
+            result = duel_arena(mode="pvp", config=cfg, key="pvp_arena")
+
+            if isinstance(result, dict):
+                ev = result.get("event")
+                if ev in ("matchEnd", "matchVoid"):
+                    sig = f"pvp:{ev}:{result.get('ts')}"
+                    if st.session_state.get("_last_saved") != sig:
+                        st.session_state["_last_saved"] = sig
+                        if db.is_enabled() and ev == "matchEnd":
+                            mid = str(uuid.uuid4())
+                            db.upsert_player(
+                                st.session_state.player_uuid,
+                                st.session_state.get("nickname", "익명"),
+                            )
+                            won = result.get("winner") == "player"
+                            db.save_match(
+                                mid, st.session_state.player_uuid, "pvp", None,
+                                "a" if won else "b", voided=False,
+                                exchanges=result.get("exchanges"),
+                                avg_ms=result.get("avgReaction"),
+                                best_ms=result.get("bestReaction"),
+                            )
+                            db.save_turns(mid, result.get("turns") or [])
+                if ev == "matchEnd":
+                    won = result.get("winner") == "player"
+                    (st.success if won else st.error)(
+                        f"{'🏆 승리' if won else '💀 패배'} vs {result.get('oppNick', '상대')}"
+                    )
+                elif ev == "matchVoid":
+                    st.warning(f"⚠️ {result.get('reason')} — 기록 미반영")
+
+            if st.button("매칭 종료"):
+                st.session_state.pvp_on = False
+                st.rerun()
