@@ -86,13 +86,14 @@ def save_turns(match_id: str, turns: list[dict]) -> None:
         st.session_state["_db_error"] = str(e)
 
 
-def fetch_player_defense_turns(player_id: str) -> list[dict]:
-    """이 플레이어가 '방어자'였던 모든 턴(반응 기록 원천)."""
+def fetch_player_defense_turns(player_id: str, mode: str = "solo") -> list[dict]:
+    """이 플레이어가 '방어자'였던 턴(반응 기록 원천). mode 로 솔로/PvP 분리."""
     c = get_client()
     if not c:
         return []
     try:
-        m = c.table("matches").select("id").eq("player_a", player_id).eq("voided", False).execute()
+        m = (c.table("matches").select("id")
+             .eq("player_a", player_id).eq("voided", False).eq("mode", mode).execute())
         ids = [r["id"] for r in (m.data or [])]
         if not ids:
             return []
@@ -104,12 +105,12 @@ def fetch_player_defense_turns(player_id: str) -> list[dict]:
         return []
 
 
-def fetch_player_matches(player_id: str) -> list[dict]:
+def fetch_player_matches(player_id: str, mode: str = "solo") -> list[dict]:
     c = get_client()
     if not c:
         return []
     try:
-        r = (c.table("matches").select("*").eq("player_a", player_id)
+        r = (c.table("matches").select("*").eq("player_a", player_id).eq("mode", mode)
              .order("ended_at", desc=True).execute())
         return r.data or []
     except Exception as e:

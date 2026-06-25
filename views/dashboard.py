@@ -19,9 +19,12 @@ if not pid:
     st.warning("먼저 **결투장**에서 닉네임을 입력하고 한 판 플레이하세요.")
     st.stop()
 
-turns = db.fetch_player_defense_turns(pid)
-matches = db.fetch_player_matches(pid)
+turns = db.fetch_player_defense_turns(pid, "solo")
+matches = db.fetch_player_matches(pid, "solo")
 rankings = db.fetch_rankings(50)
+
+st.header("🎮 솔로 통계")
+st.caption("봇과의 솔로 전적·반응 기록입니다. 레이팅/전역 순위는 PvP 전용이라 여기 섞이지 않습니다.")
 
 dft = pd.DataFrame(turns)
 dfm = pd.DataFrame(matches)
@@ -76,9 +79,14 @@ if not dfm.empty and dfm["avg_reaction_ms"].notna().any():
     fig3.update_layout(yaxis_title="평균 반응(ms)", height=320)
     st.plotly_chart(fig3, use_container_width=True)
 
-# ===== 전역 순위 + 내 백분위 =====
-st.subheader("전역 순위표")
-if not dfr.empty:
+# ===== 전역 순위 + 내 백분위 (PvP 전용) =====
+st.divider()
+st.header("🏆 전역 순위 (PvP 전용)")
+ranked = dfr[dfr["games"].fillna(0) > 0] if not dfr.empty and "games" in dfr else pd.DataFrame()
+if ranked.empty:
+    st.info("아직 PvP 기록이 없습니다. PvP 매칭은 Phase 3 에서 열립니다. (솔로는 위 통계에만 반영)")
+else:
+    dfr = ranked
     show = dfr.copy().reset_index(drop=True)
     show.insert(0, "순위", range(1, len(show) + 1))
     st.dataframe(
@@ -93,5 +101,3 @@ if not dfr.empty:
         my_avg = mine.iloc[0]["avg_reaction"]
         faster_than = (allavg > my_avg).mean() * 100  # 나보다 느린 사람 비율
         st.metric("내 반응 위치", f"상위 {round(100 - faster_than)}%", help=f"내 평균 {int(my_avg)}ms")
-else:
-    st.caption("순위 데이터가 아직 없습니다.")

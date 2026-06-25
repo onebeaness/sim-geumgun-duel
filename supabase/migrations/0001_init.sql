@@ -42,7 +42,7 @@ create table if not exists public.turns (
 );
 create index if not exists idx_turns_match on public.turns(match_id);
 
--- 순위 집계 뷰
+-- 순위 집계 뷰 (PvP 전용 — 솔로는 글로벌 랭킹/레이팅에 포함하지 않음)
 create or replace view public.rankings as
 select
   p.id        as player_id,
@@ -53,7 +53,8 @@ select
   count(distinct m.id) filter (where m.winner = 'a') as wins,
   count(distinct m.id)                               as games
 from public.players p
-left join public.matches m on m.player_a = p.id and not m.voided
+left join public.matches m
+  on m.player_a = p.id and not m.voided and m.mode = 'pvp'
 left join public.turns   t on t.match_id = m.id and t.defender = 'player'
 group by p.id, p.nickname, p.rating;
 
