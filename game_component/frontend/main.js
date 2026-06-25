@@ -68,6 +68,7 @@ function freshState() {
     reactions: { player: [], opp: [] },
     window: { player: CFG.window.initMs, opp: CFG.window.initMs },
     curDir: null, cueStartTs: 0, cueReady: false,
+    turnLog: [],
     over: false, voided: false, winner: null,
   };
 }
@@ -263,6 +264,14 @@ function resolveBotDefense(attackDir) {
 // --- 방어 판정 후 처리 ---
 function resolveDefense(defender, success, reaction) {
   S.phase = "resolve";
+  S.turnLog.push({
+    turn_no: S.exchangeNo, attacker: S.attacker, defender,
+    direction: S.curDir,
+    reaction_ms: reaction != null ? Math.round(reaction) : null,
+    defended: success,
+    window_ms: Math.round(defender === "player" ? S.window.player : S.window.opp),
+    cause: success ? null : "defense",
+  });
   if (success) {
     if (defender === "player") { setLanes("ok", null); banner("막음!", "good"); }
     timers.pace = setTimeout(nextAfterResolve, 650);
@@ -277,6 +286,10 @@ function resolveDefense(defender, success, reaction) {
 // --- 타임아웃 처리 ---
 function handleTimeout(who) {
   clearTimeout(timers.commit);
+  S.turnLog.push({
+    turn_no: S.exchangeNo, attacker: who, defender: other(who),
+    direction: null, reaction_ms: null, defended: false, window_ms: null, cause: "timeout",
+  });
   S.pendingTimeout[who] = (S.pendingTimeout[who] || 0) + 1;
   setHand("idle");
   banner("시간 초과", "warn");
@@ -319,6 +332,7 @@ function statsPayload() {
     reactionsPlayer: pr.map((x) => Math.round(x)),
     avgReaction: pr.length ? Math.round(pr.reduce((a, b) => a + b, 0) / pr.length) : null,
     bestReaction: pr.length ? Math.round(Math.min(...pr)) : null,
+    turns: S.turnLog,
   };
 }
 function endMatch(winner) {

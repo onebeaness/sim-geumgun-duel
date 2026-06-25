@@ -3,7 +3,7 @@ import uuid
 
 import streamlit as st
 
-from lib import config
+from lib import config, db
 from game_component import duel_arena
 
 st.title("⚔️ 심: 금군 듀얼")
@@ -50,6 +50,37 @@ if mode == "솔로 플레이":
 
         if isinstance(result, dict):
             ev = result.get("event")
+
+            # --- 결과 저장 (rerun 중복 방지: ts 로 dedup) ---
+            if ev in ("matchEnd", "matchVoid"):
+                sig = f"{ev}:{result.get('ts')}"
+                if st.session_state.get("_last_saved") != sig:
+                    st.session_state["_last_saved"] = sig
+                    if db.is_enabled():
+                        match_id = str(uuid.uuid4())
+                        db.upsert_player(
+                            st.session_state.player_uuid,
+                            st.session_state.get("nickname", "익명"),
+                        )
+                        winner = None if ev == "matchVoid" else (
+                            "a" if result.get("winner") == "player" else "b"
+                        )
+                        db.save_match(
+                            match_id, st.session_state.player_uuid, "solo",
+                            st.session_state.get("difficulty"), winner,
+                            voided=(ev == "matchVoid"),
+                            exchanges=result.get("exchanges"),
+                            avg_ms=result.get("avgReaction"),
+                            best_ms=result.get("bestReaction"),
+                        )
+                        db.save_turns(match_id, result.get("turns") or [])
+                        st.session_state["_saved_note"] = (
+                            "void" if ev == "matchVoid" else "ok"
+                        )
+                    else:
+                        st.session_state["_saved_note"] = "disabled"
+
+            # --- 결과 카드 ---
             if ev == "matchEnd":
                 won = result.get("winner") == "player"
                 avg = result.get("avgReaction")
@@ -59,13 +90,21 @@ if mode == "솔로 플레이":
                     f"평균 반응 {avg if avg is not None else '—'}ms · "
                     f"최고 {best if best is not None else '—'}ms"
                 )
-                if won:
-                    st.success(f"🏆 **승리** — {line}")
-                else:
-                    st.error(f"💀 **패배** — {line}")
-                st.caption("Phase 2 에서 이 결과가 Supabase 에 저장됩니다.")
+                (st.success if won else st.error)(
+                    f"{'🏆 **승리**' if won else '💀 **패배**'} — {line}"
+                )
             elif ev == "matchVoid":
                 st.warning(f"⚠️ 기록 미반영 — {result.get('reason')}")
+
+            note = st.session_state.get("_saved_note")
+            if note == "ok":
+                st.caption("✅ 전적이 Supabase 에 저장됐습니다. · 대시보드에서 확인하세요.")
+            elif note == "void":
+                st.caption("기록 미반영 매치 — 저장되지 않았습니다.")
+            elif note == "disabled":
+                st.caption("ℹ️ DB 미설정(secrets 없음) — 저장 생략. 솔로 플레이는 정상입니다.")
+            if st.session_state.get("_db_error"):
+                st.caption(f"⚠️ 저장 경고: {st.session_state['_db_error']}")
 
         if st.button("결투 종료 (로비로)"):
             st.session_state.in_duel = False
