@@ -110,15 +110,36 @@ function renderHUD() {
   els.windowLabel.textContent = `허용 ${Math.round(w)}ms`;
 }
 
+const IMG = {
+  bg: "img/bg/bg_arena.jpg",
+  opp: {
+    idle: "img/opponent/opp_idle.png",
+    "attack-left": "img/opponent/opp_attack_left.png",
+    "attack-center": "img/opponent/opp_attack_center.png",
+    "attack-right": "img/opponent/opp_attack_right.png",
+    hit: "img/opponent/opp_idle.png", // 피격 전용 컷 없음 → 대기 + .hit 필터
+    win: "img/opponent/opp_idle.png",
+  },
+  hand: { // 공격/막기 공용(방향별 1장)
+    left: "img/hand/hand_left.png",
+    center: "img/hand/hand_center.png",
+    right: "img/hand/hand_right.png",
+  },
+};
 function setOpp(state) { // 'idle' | 'attack-left/center/right' | 'hit' | 'win'
-  els.layerOpp.className = "sprite " + (state === "idle" ? "" : state);
-  const map = { idle: "대기", "attack-left": "좌 공격!", "attack-center": "중 공격!", "attack-right": "우 공격!", hit: "피격", win: "승리" };
-  els.oppLabel.textContent = map[state] || "대기";
+  els.layerOpp.style.backgroundImage = `url('${IMG.opp[state] || IMG.opp.idle}')`;
+  const cls = state === "hit" ? "hit" : state === "win" ? "win"
+    : state.startsWith("attack") ? "attacking" : "";
+  els.layerOpp.className = "sprite " + cls;
 }
-function setHand(state) { // 'idle' | 'attack' | 'block-left/center/right'
-  els.layerHand.className = "sprite " + (state === "idle" ? "" : state);
-  const map = { idle: "대기", attack: "공격", "block-left": "좌 막기", "block-center": "중 막기", "block-right": "우 막기" };
-  els.handLabel.textContent = map[state] || "대기";
+function setHand(state) { // 'idle' | 'attack-left/center/right' | 'block-left/center/right'
+  const dir = state === "idle" ? "center" : state.split("-")[1];
+  els.layerHand.style.backgroundImage = `url('${IMG.hand[dir] || IMG.hand.center}')`;
+}
+function preloadImages() {
+  [IMG.bg, ...Object.values(IMG.opp), ...Object.values(IMG.hand)].forEach((s) => {
+    const i = new Image(); i.src = s;
+  });
 }
 function setLanes(cls, dir) { // cls: ''|'cue'|'ok'|'bad'
   els.lanes.forEach((l) => {
@@ -186,7 +207,7 @@ function playerCommitted(dir) {
   S.phase = "resolve";
   S.curDir = dir;
   hideBanner();
-  setHand("attack");
+  setHand("attack-" + dir);
   setStatus("상대가 막는 중…");
   timers.pace = setTimeout(() => resolveBotDefense(dir), 350);
 }
@@ -377,6 +398,7 @@ els.againBtn.addEventListener("click", () => startMatch());
 Streamlit.onRender((args) => {
   if (!started) {
     started = true;
+    preloadImages();
     CFG = Object.assign({}, DEFAULT_CFG, args.config || {});
     if (!CFG.window) CFG.window = DEFAULT_CFG.window;
     const profiles = CFG.botProfiles || DEFAULT_CFG.botProfiles;

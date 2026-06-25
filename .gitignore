@@ -22,6 +22,12 @@ node_modules/
 dist/
 build/
 
+# --- 원본 대용량 소스 이미지 (최적화본은 game_component/frontend/img/ 에 커밋됨) ---
+assets/img/**/*.png
+assets/img/**/*.jpg
+assets/img/**/*.jpeg
+assets/img/**/*.webp
+
 # --- OS / 에디터 ---
 .DS_Store
 Thumbs.db

@@ -2,112 +2,76 @@
 body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; color: #e8e6e3; background: transparent; }
 
 #game { outline: none; user-select: none; position: relative; }
-#game:focus #scene { box-shadow: 0 0 0 2px #c0392b66; }
+#game:focus #scene { box-shadow: 0 0 0 2px #c0392b88; }
 
 /* ===== HUD ===== */
-#hud {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; margin-bottom: 8px;
-}
-#hud .who { font-size: 13px; color: #9a9a9a; }
+#hud { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 10px; }
+#hud .who { font-size: 13px; color: #b9b4ad; }
 #hud .side.right { text-align: right; }
 #hud .hearts { font-size: 22px; letter-spacing: 2px; line-height: 1.2; }
 #hud .center-info { text-align: center; }
 #exchange-no { font-size: 14px; font-weight: 700; }
-#window-label { font-size: 12px; color: #c0392b; }
+#window-label { font-size: 12px; color: #e2b04a; }
 
-/* ===== Scene (3 layers) ===== */
-#scene {
-  position: relative; height: 460px; border-radius: 16px; overflow: hidden;
-  border: 1px solid #2c2c2c;
-}
-#layer-bg {
-  position: absolute; inset: 0;
-  background:
-    radial-gradient(120% 80% at 50% -10%, #2a2320 0%, #141210 55%, #0d0c0b 100%);
-}
+/* ===== Scene (3 layers, image-composited) ===== */
+#scene { position: relative; height: 520px; border-radius: 16px; overflow: hidden; border: 1px solid #2c2c2c; }
 
-/* 상대 (정면, 중앙 상단) */
+#layer-bg { position: absolute; inset: 0; background: #0d0c0b url('img/bg/bg_arena.jpg') center/cover no-repeat; }
+#layer-bg::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.10) 0%, rgba(0,0,0,.15) 45%, rgba(0,0,0,.62) 100%); }
+
+/* 상대 (정면, 중앙 상단) — 이미지 교체 */
 #layer-opp {
-  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-  width: 150px; height: 150px; border-radius: 12px;
-  background: #2b2b2b; border: 2px solid #444;
-  display: flex; align-items: flex-end; justify-content: center;
-  transition: transform .1s, background .1s, border-color .1s;
-  z-index: 2;
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  width: 56%; height: 64%;
+  background-position: center bottom; background-repeat: no-repeat; background-size: contain;
+  z-index: 2; filter: drop-shadow(0 10px 20px rgba(0,0,0,.65));
 }
-#layer-opp.attack-left  { transform: translateX(-50%) translateX(-70px) rotate(-8deg); border-color: #c0392b; }
-#layer-opp.attack-center{ transform: translateX(-50%) translateY(12px) scale(1.05); border-color: #c0392b; }
-#layer-opp.attack-right { transform: translateX(-50%) translateX(70px) rotate(8deg); border-color: #c0392b; }
-#layer-opp.hit  { background: #3a1f1f; border-color: #c0392b; }
-#layer-opp.win  { background: #1f3a24; border-color: #27ae60; }
+#layer-opp.attacking { animation: lunge .2s ease-out; }
+@keyframes lunge { 0% { transform: translateX(-50%) scale(1); } 55% { transform: translateX(-50%) scale(1.09); } 100% { transform: translateX(-50%) scale(1.05); } }
+#layer-opp.hit { filter: drop-shadow(0 0 16px #c0392b) brightness(.78) saturate(1.2); }
+#layer-opp.win { filter: drop-shadow(0 0 18px #27ae60) brightness(1.05); }
 
-/* 내 손 + 검 (1인칭 전경, 하단) */
+/* 내 손 + 검 (1인칭 전경, 하단) — 이미지 교체 */
 #layer-hand {
-  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
-  width: 90%; height: 70px; border-radius: 12px;
-  background: linear-gradient(180deg, #232323, #1a1a1a); border: 2px solid #3a3a3a;
-  display: flex; align-items: center; justify-content: center;
-  transition: transform .08s, border-color .08s; z-index: 4;
+  position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
+  width: 98%; height: 48%;
+  background-position: center bottom; background-repeat: no-repeat; background-size: contain;
+  z-index: 4; pointer-events: none; filter: drop-shadow(0 -6px 14px rgba(0,0,0,.55));
+  transition: transform .08s;
 }
-#layer-hand.block-left  { transform: translateX(-50%) translateX(-22%) skewX(-6deg); border-color: #27ae60; }
-#layer-hand.block-center{ transform: translateX(-50%) translateY(-6px) scale(1.02); border-color: #27ae60; }
-#layer-hand.block-right { transform: translateX(-50%) translateX(22%) skewX(6deg); border-color: #27ae60; }
-#layer-hand.attack { border-color: #c0392b; }
-.sprite-label { font-size: 13px; color: #cfcfcf; padding-bottom: 6px; }
 
-/* 3레인 */
-#lanes {
-  position: absolute; inset: 80px 8px 86px 8px;
-  display: flex; gap: 10px; z-index: 3;
-}
-.lane {
-  flex: 1; border: 2px solid #333; border-radius: 12px;
-  background: rgba(255,255,255,0.02);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  transition: all .08s; opacity: .55;
-}
-.lane .arrow { font-size: 30px; color: #555; }
-.lane .lane-name { font-size: 16px; font-weight: 700; }
-.lane .keyhint { font-size: 11px; color: #7a7a7a; }
-.lane.cue { opacity: 1; border-color: #c0392b; background: #3a1f1f; animation: pulse .5s infinite alternate; }
-.lane.cue .arrow { color: #e74c3c; }
-.lane.ok { opacity: 1; border-color: #27ae60; background: #1f3a24; }
-.lane.bad { opacity: 1; border-color: #c0392b; background: #4a1c1c; }
-@keyframes pulse { from { box-shadow: 0 0 0 0 #c0392b00; } to { box-shadow: 0 0 18px 2px #c0392b88; } }
+.sprite-label { display: none; }
 
-/* 허용시간 바 */
-#timer-track {
-  position: absolute; left: 8px; right: 8px; bottom: 84px; height: 6px;
-  background: #222; border-radius: 4px; overflow: hidden; z-index: 3; opacity: 0;
-  transition: opacity .1s;
-}
+/* 3레인 = 화면을 가리지 않는 방향 글로우 오버레이 */
+#lanes { position: absolute; inset: 0; display: flex; z-index: 3; pointer-events: none; }
+.lane { flex: 1; display: flex; align-items: flex-start; justify-content: center; transition: background .08s; }
+.lane .arrow { margin-top: 10px; font-size: 30px; color: transparent; transition: color .08s, text-shadow .08s; }
+.lane .lane-name, .lane .keyhint { display: none; }
+.lane.cue { background: radial-gradient(58% 60% at 50% 38%, rgba(192,57,43,.42), transparent 72%); }
+.lane.cue .arrow { color: #ff5a4d; text-shadow: 0 0 10px #c0392b; }
+.lane.ok  { background: radial-gradient(58% 60% at 50% 38%, rgba(39,174,96,.34), transparent 72%); }
+.lane.bad { background: radial-gradient(58% 60% at 50% 38%, rgba(192,57,43,.48), transparent 72%); }
+
+/* 허용시간 바 (상단) */
+#timer-track { position: absolute; top: 0; left: 0; right: 0; height: 5px; background: rgba(0,0,0,.45); overflow: hidden; z-index: 6; opacity: 0; transition: opacity .1s; }
 #timer-track.on { opacity: 1; }
 #timer-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #27ae60, #f1c40f, #c0392b); transform-origin: left; }
 
 /* 중앙 배너 */
-#banner {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  z-index: 6; font-size: 30px; font-weight: 800; padding: 10px 22px; border-radius: 12px;
-  background: rgba(0,0,0,0.55); backdrop-filter: blur(2px); white-space: nowrap;
-}
-#banner.good { color: #2ecc71; } #banner.bad { color: #e74c3c; } #banner.warn { color: #f1c40f; }
+#banner { position: absolute; top: 46%; left: 50%; transform: translate(-50%, -50%); z-index: 6;
+  font-size: 34px; font-weight: 900; padding: 8px 24px; border-radius: 12px;
+  background: rgba(0,0,0,.5); backdrop-filter: blur(2px); white-space: nowrap; text-shadow: 0 2px 8px #000; }
+#banner.good { color: #2ecc71; } #banner.bad { color: #ff5a4d; } #banner.warn { color: #f1c40f; }
 
-#status { text-align: center; margin-top: 10px; color: #9a9a9a; font-size: 13px; min-height: 18px; }
+#status { text-align: center; margin-top: 10px; color: #a9a39b; font-size: 13px; min-height: 18px; }
 
 /* 결과 오버레이 */
-#overlay {
-  position: absolute; inset: 0; z-index: 10;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-  background: rgba(8,8,8,0.82);
-}
-#overlay-title { font-size: 40px; font-weight: 900; }
-#overlay-title.win { color: #2ecc71; } #overlay-title.lose { color: #e74c3c; } #overlay-title.void { color: #f1c40f; }
-#overlay-sub { color: #bdbdbd; font-size: 14px; text-align: center; }
-#again-btn {
-  margin-top: 8px; padding: 10px 22px; font-size: 15px; font-weight: 700; cursor: pointer;
-  background: #c0392b; color: #fff; border: none; border-radius: 10px;
-}
+#overlay { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(8,8,8,.8); }
+#overlay-title { font-size: 44px; font-weight: 900; text-shadow: 0 2px 10px #000; }
+#overlay-title.win { color: #2ecc71; } #overlay-title.lose { color: #ff5a4d; } #overlay-title.void { color: #f1c40f; }
+#overlay-sub { color: #cfcac3; font-size: 14px; text-align: center; }
+#again-btn { margin-top: 8px; padding: 10px 24px; font-size: 15px; font-weight: 700; cursor: pointer; background: #c0392b; color: #fff; border: none; border-radius: 10px; }
 #again-btn:hover { background: #a93226; }
 
 .hidden { display: none !important; }
