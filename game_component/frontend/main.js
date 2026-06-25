@@ -474,7 +474,7 @@ function netScheduleTurn(t) {
   S.exchangeNo = t;
   S.attacker = (attackerIdForTurn(t) === P.myId) ? "player" : "opp";
   S.defender = (S.attacker === "player") ? "opp" : "player";
-  S.curDir = null; S.cueReady = false;
+  S.curDir = null; S.cueReady = false; S.turnResolved = false;
   setOpp("idle"); setHand("idle"); setLanes(""); hideBanner(); renderHUD();
   if (S.attacker === "player") netPromptAttack(t);
   else { S.phase = "awaitAtk"; setStatus("상대의 공격을 기다리는 중…"); }
@@ -487,16 +487,19 @@ function netPromptAttack(t) {
   timers.commit = setTimeout(() => { send({ ev: "timeout", t }); netApplyTimeout(P.myId, t); }, CFG.commitTimeoutMs);
 }
 function netCommit(dir) {
+  if (S.phase !== "attackerCommit") return; // 연타/중복 입력 무시
+  S.phase = "await";                         // 즉시 잠금
   clearTimeout(timers.commit);
-  S.curDir = dir; S.phase = "await";
+  S.curDir = dir;
   setHand("attack-" + dir); hideBanner(); setStatus("상대가 막는 중…");
   send({ ev: "attack", t: S.exchangeNo, dir });
 }
 function onSig(p) {
   if (!S || S.over) return;
-  if (p.ev === "attack" && p.t === S.exchangeNo && S.defender === "player") netBeginDefense(p.dir);
-  else if (p.ev === "result" && p.t === S.exchangeNo && S.attacker === "player") netApplyResultFromOpp(p.t, p.hit, p.reaction);
-  else if (p.ev === "timeout" && p.t === S.exchangeNo) netApplyTimeout(attackerIdForTurn(p.t), p.t);
+  // 각 분기를 기대 phase 로 가드 → 중복/순서꼬임 broadcast 무시
+  if (p.ev === "attack" && p.t === S.exchangeNo && S.defender === "player" && S.phase === "awaitAtk") netBeginDefense(p.dir);
+  else if (p.ev === "result" && p.t === S.exchangeNo && S.attacker === "player" && S.phase === "await" && !S.turnResolved) netApplyResultFromOpp(p.t, p.hit, p.reaction);
+  else if (p.ev === "timeout" && p.t === S.exchangeNo && !S.turnResolved) netApplyTimeout(attackerIdForTurn(p.t), p.t);
 }
 function netBeginDefense(dir) {
   S.curDir = dir; S.phase = "precue";
@@ -514,11 +517,14 @@ function netShowCue(dir) {
   }));
 }
 function netTooEarly() {
-  clearTimeout(timers.win); stopTimerBar(); setLanes(""); setOpp("idle");
-  banner("너무 빨랐음 · 다시", "warn"); S.phase = "resolve";
+  if (S.phase === "resolve") return; // 이미 처리됨(연타 무시)
+  S.phase = "resolve";
+  clearTimeout(timers.win); clearTimeout(timers.precue); stopTimerBar();
+  setLanes(""); setOpp("idle"); banner("너무 빨랐음 · 다시", "warn");
   timers.pace = setTimeout(() => { hideBanner(); netBeginDefense(S.curDir); }, 700);
 }
 function netDefenseKey(dir) {
+  if (S.phase !== "cue") return; // 연타/중복 입력 무시
   if (!S.cueReady) return netTooEarly();
   const reaction = performance.now() - S.cueStartTs;
   if (reaction < CFG.minValidReactionMs) return netTooEarly();
@@ -530,6 +536,7 @@ function netDefenseKey(dir) {
   netResolveMyDefense(dir, hit, reaction);
 }
 function netResolveMyDefense(dir, hit, reaction) {
+  S.phase = "resolve"; // 시간초과 경로 포함 잠금
   send({ ev: "result", t: S.exchangeNo, hit, reaction: reaction != null ? Math.round(reaction) : null });
   pushTurn("player", hit, reaction);
   netApplyOutcome(S.exchangeNo, hit, "player");
@@ -541,11 +548,15 @@ function netApplyResultFromOpp(t, hit, reaction) {
   netApplyOutcome(t, hit, "opp");
 }
 function netApplyOutcome(t, hit, defenderRole) {
+  if (S.turnResolved) return; // 한 턴 1회만 처리(중복 broadcast/연타 방지)
+  S.turnResolved = true;
   if (!hit) netLoseLife(defenderRole, "defense");
   renderHUD();
   if (!S.over) timers.pace = setTimeout(() => netScheduleTurn(t + 1), 750);
 }
 function netApplyTimeout(attId, t) {
+  if (S.turnResolved) return;
+  S.turnResolved = true;
   clearTimeout(timers.commit);
   const role = (attId === P.myId) ? "player" : "opp";
   S.pendingTimeout[role] = (S.pendingTimeout[role] || 0) + 1;
@@ -572,19 +583,30 @@ function netEnd(winnerRole) {
   S.over = true; clearTimers();
   const win = winnerRole === "player";
   setOpp(win ? "hit" : "win");
-  els.againBtn.style.display = "none";
+  els.againBtn.style.display = ""; els.againBtn.textContent = "재대결";
   showOverlay(win ? "win" : "lose", win ? "승리" : "패배", win ? `${P.oppNick} 격파!` : `${P.oppNick}에게 패배`);
   Streamlit.value({ event: "matchEnd", ts: Date.now(), mode: "pvp", winner: winnerRole, voided: false, oppNick: P.oppNick, ...statsPayload() });
   cleanupPvP();
 }
 function netVoid(reason) {
   S.over = true; clearTimers();
-  els.againBtn.style.display = "none";
+  els.againBtn.style.display = ""; els.againBtn.textContent = "재대결";
   showOverlay("void", "기록 미반영", reason + " — 전적·레이팅에 반영되지 않습니다.");
   Streamlit.value({ event: "matchVoid", ts: Date.now(), mode: "pvp", reason });
   cleanupPvP();
 }
 function cleanupPvP() { try { if (P.ch) sb.removeChannel(P.ch); } catch (e) {} }
+function pvpRematch() {
+  clearTimers();
+  els.overlay.classList.add("hidden");
+  els.againBtn.textContent = "다시 결투";
+  S = null;
+  P.started = false; P.matchOn = false;
+  try { if (P.ch) sb.removeChannel(P.ch); } catch (e) {}
+  P.ch = null;
+  setOpp("idle"); setHand("idle"); setLanes(""); hideBanner();
+  if (P.room) joinDuel("room:" + P.room); else findMatch();
+}
 
 // === 입력 라우팅 ===
 els.game.addEventListener("click", () => els.game.focus());
@@ -603,7 +625,7 @@ els.game.addEventListener("keydown", (ev) => {
   else if (S.phase === "precue") tooEarly();
   else if (S.phase === "cue") onPlayerDefenseKey(dir);
 });
-els.againBtn.addEventListener("click", () => { if (MODE !== "pvp") startMatch(); });
+els.againBtn.addEventListener("click", () => { if (MODE === "pvp") pvpRematch(); else startMatch(); });
 
 // === 렌더 진입점 ===
 Streamlit.onRender((args) => {
