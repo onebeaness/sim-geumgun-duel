@@ -18,7 +18,7 @@ window.addEventListener("message", (e) => {
 const DEFAULT_CFG = {
   lives: 3,
   directions: ["left", "center", "right"],
-  commitTimeoutMs: 5000,
+  commitTimeoutMs: 3000,
   window: { initMs: 800, minMs: 250, maxMs: 1200, factor: 1.5, lookback: 3 },
   precue: { minMs: 300, maxMs: 1200 },
   minValidReactionMs: 100,
@@ -32,8 +32,10 @@ const DEFAULT_CFG = {
 
 const DIRS = ["left", "center", "right"];
 const KEY_TO_DIR = {
-  ArrowLeft: "left", ArrowDown: "center", ArrowRight: "right",
-  a: "left", s: "center", d: "right", A: "left", S: "center", D: "right",
+  ArrowLeft: "left", ArrowRight: "right",
+  ArrowUp: "center", ArrowDown: "center", // 중앙은 상단/하단 아무거나
+  a: "left", d: "right", w: "center", s: "center",
+  A: "left", D: "right", W: "center", S: "center",
 };
 
 // === DOM ===
@@ -197,8 +199,12 @@ function scheduleExchange() {
 // --- 내가 공격 ---
 function promptPlayerAttack() {
   S.phase = "attackerCommit";
-  setStatus("⚔ 공격! 방향키(← ↓ →)를 누르세요");
-  banner("공격하라", "warn");
+  const sec = Math.round(CFG.commitTimeoutMs / 1000);
+  setStatus(
+    `⚔ 당신의 공격 턴! 좌(←/A) · 중(↑↓/W S) · 우(→/D) 중 한 방향으로 베세요 — ` +
+    `상대가 그 방향을 막으려 합니다. ${sec}초 안에 미선택 시 시간초과.`
+  );
+  banner("공격하라!", "warn");
   els.game.focus();
   timers.commit = setTimeout(() => handleTimeout("player"), CFG.commitTimeoutMs);
 }
